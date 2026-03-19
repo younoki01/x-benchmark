@@ -1,0 +1,29 @@
+name: Daily X Benchmark
+
+on:
+  schedule:
+    - cron: '0 15 * * *'  # 毎日UTC 15:00 = JST 0:00
+  workflow_dispatch:       # 手動実行も可能
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run analysis
+        env:
+          X_BEARER_TOKEN:    ${{ secrets.X_BEARER_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python analyze.py
