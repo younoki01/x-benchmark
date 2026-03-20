@@ -88,7 +88,7 @@ def analyze_account(username: str, tweets: list) -> str:
 
 以下の形式で簡潔に分析してください：
 - 最高パフォーマンス投稿（1件）とその理由
-- 効果的だったコンテンツの傾向（1〜2点）"""
+- 効果的だったコンテンツの傾向（1$301C2点）"""
 
     return call_claude(prompt, max_tokens=800)
 
@@ -106,7 +106,7 @@ def compare_accounts(accounts_data: list) -> str:
 以下を簡潔に答えてください：
 - 最もパフォーマンスが高いアカウントとその理由
 - 共通して効果的だったテーマや傾向
-- @Y0shiCareerアカウントへの示唆（1〜2点）"""
+- @Y0shiCareerアカウントへの示唆（1$301C2点）"""
 
     return call_claude(prompt, max_tokens=600)
 
@@ -123,17 +123,24 @@ def generate_posts(top_tweets: list) -> str:
 
 {examples}
 
-上記の投稿スタイル・構成を参考に、以下のキーワードそれぞれについて{POST_COUNT}件の投稿案を日本語で作成してください。
+上記の投稿スタイル・構成を参考に、以下のキーワードそれぞれについて投稿案を日本語で作成してください。
 キーワード：{keywords_str}
 
 条件：
 - キャリアコンサルタント・エンジニアとしての専門知識を活かした内容
 - 共感・驚き・具体的なアドバイスのいずれかを含む
-- 140文字以内
-- 各キーワードの投稿案は番号付きで
+- 各キーワードについて以下の2パターンを作成：
+  【短文版】140文字以内 × {POST_COUNT}案（日常的なつぶやき・共感系）
+  【長文版】300?400文字 × {POST_COUNT}案（知識・体験談・具体的アドバイス系）
 
 形式：
 【転職】
+＜短文版＞
+1. ...
+2. ...
+3. ...
+
+＜長文版＞
 1. ...
 2. ...
 3. ...
@@ -141,7 +148,7 @@ def generate_posts(top_tweets: list) -> str:
 【キャリア相談】
 ...（以下同様）"""
 
-    return call_claude(prompt, max_tokens=2000)
+    return call_claude(prompt, max_tokens=4000)
 
 # ── Slack通知 ─────────────────────────────────────────────
 def send_to_slack(text: str):
@@ -151,7 +158,7 @@ def send_to_slack(text: str):
 
 # ── メイン ────────────────────────────────────────────────
 def main():
-    print("▶ X ベンチマーク分析ツール 起動")
+    print("$25B6 X ベンチマーク分析ツール 起動")
     today = datetime.now(JST).strftime("%Y/%m/%d")
 
     # ユーザーID取得
@@ -190,7 +197,7 @@ def main():
     post_suggestions = generate_posts(top_tweets) if top_tweets else "参考データが不足しています。"
 
     # Slackメッセージ組み立て
-    message = f"""*📊 X ベンチマークレポート（{today}）*
+    message = f"""*$D83D$DCCA X ベンチマークレポート（{today}）*
 
 {chr(10).join(account_reports)}
 
@@ -198,11 +205,11 @@ def main():
 {comparison}
 
 ━━━━━━━━━━━━━━━
-*✍️ 今日の投稿案*
+*$270D$FE0F 今日の投稿案*
 {post_suggestions}"""
 
     send_to_slack(message)
-    print("✅ Slack通知送信完了")
+    print("$2705 Slack通知送信完了")
 
 if __name__ == "__main__":
     main()
