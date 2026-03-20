@@ -78,6 +78,12 @@ def save_diff(existing: dict, new_tweets: list, username: str) -> int:
 # ── メイン ────────────────────────────────────────────────
 def main():
     print("▶ ベンチマーク収集 起動")
+    # dataフォルダがなければ作成
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not DATA_FILE.exists():
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump({"tweets": []}, f)
+
     existing = load_existing_data()
     total_added = 0
 
