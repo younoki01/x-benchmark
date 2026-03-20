@@ -6,12 +6,12 @@ from pathlib import Path
 
 # ── 環境変数 ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-SLACK_BOT_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
-SLACK_CHANNEL     = os.environ["SLACK_CHANNEL"]  # 例: #x-analytics
+SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = Path("data/tweets.json")
 
+# ── 投稿案生成キーワード ──────────────────────────────────
 KEYWORDS = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
 POST_COUNT = 3
 
@@ -39,90 +39,57 @@ def call_claude(prompt: str, max_tokens: int = 4000) -> str:
     return r.json()["content"][0]["text"]
 
 # ── 投稿案生成 ────────────────────────────────────────────
-def generate_posts(tweets: list) -> list:
+def generate_posts(tweets: list) -> str:
+    # インプレッション上位10件を参考に
     sorted_tweets = sorted(tweets, key=lambda x: x["metrics"].get("impression_count", 0), reverse=True)
     top_tweets = sorted_tweets[:10]
 
     examples = "\n".join([
         f"- [@{t['username']}] {t['text'][:100]}\n"
-        f"  いいね:{t['metrics'].get('like_count',0)} IMP:{t['metrics'].get('impression_count',0):,}"
+        f"  いいね:{t['metrics'].get('like_count',0)} RT:{t['metrics'].get('retweet_count',0)} "
+        f"IMP:{t['metrics'].get('impression_count',0):,}"
         for t in top_tweets
     ])
 
     keywords_str = "・".join(KEYWORDS)
+    now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
 
-    prompt = f"""以下はベンチマークアカウントの高パフォーマンス投稿データです。
+    prompt = f"""以下はベンチマークアカウントの高パフォーマンス投稿データです（蓄積データより上位10件）。
 
 {examples}
 
-上記を参考に、キーワードごとに投稿案を作成してください。
+上記の投稿スタイル・構成を参考に、以下のキーワードそれぞれについて投稿案を日本語で作成してください。
 キーワード：{keywords_str}
 
 条件：
-- キャリアコンサルタント・エンジニアの専門知識を活かした内容
-- 各キーワードについて：
-  【短文版】140文字以内 × {POST_COUNT}案
-  【長文版】300〜400文字 × {POST_COUNT}案
+- キャリアコンサルタント・エンジニアとしての専門知識を活かした内容
+- 共感・驚き・具体的なアドバイスのいずれかを含む
+- 各キーワードについて以下の2パターンを{POST_COUNT}案ずつ作成：
+  【短文版】140文字以内（日常的なつぶやき・共感系）
+  【長文版】300〜400文字（知識・体験談・具体的アドバイス系）
 
-必ずJSON形式のみで返答してください。以下の形式で：
-{{
-  "posts": [
-    {{"keyword": "転職", "type": "短文", "text": "投稿内容"}},
-    ...
-  ]
-}}"""
+形式：
+【転職】
+＜短文版＞
+1. ...
+2. ...
+3. ...
 
-    result = call_claude(prompt)
-    # JSON部分を抽出
-    start = result.find("{")
-    end = result.rfind("}") + 1
-    return json.loads(result[start:end])["posts"]
+＜長文版＞
+1. ...
+2. ...
+3. ...
 
-# ── Slackにボタン付きメッセージ送信 ──────────────────────
-def send_post_to_slack(post: dict):
-    headers = {
-        "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    keyword = post["keyword"]
-    ptype = post["type"]
-    text = post["text"]
+【キャリア相談】
+...（以下同様）"""
 
-    blocks = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*【{keyword}】{ptype}*\n{text}"
-            }
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "✅ 投稿する"},
-                    "style": "primary",
-                    "action_id": "post_to_x",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "⏭️ スキップ"},
-                    "action_id": "skip_post",
-                    "value": text
-                }
-            ]
-        },
-        {"type": "divider"}
-    ]
+    return call_claude(prompt)
 
-    payload = {
-        "channel": SLACK_CHANNEL,
-        "text": f"【{keyword}】{ptype}の投稿案",
-        "blocks": blocks
-    }
-    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json=payload)
+# ── Slack通知 ─────────────────────────────────────────────
+def send_to_slack(text: str):
+    payload = {"text": text}
+    r = requests.post(SLACK_WEBHOOK_URL, json=payload)
+    r.raise_for_status()
 
 # ── メイン ────────────────────────────────────────────────
 def main():
@@ -131,27 +98,17 @@ def main():
 
     if not tweets:
         print("データがありません")
+        send_to_slack("⚠️ 投稿案生成: データが蓄積されていません。収集ワークフローを確認してください。")
         return
 
     print(f"  蓄積データ: {len(tweets)}件")
-    posts = generate_posts(tweets)
-    print(f"  生成投稿案: {len(posts)}件")
+    suggestions = generate_posts(tweets)
 
     now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
-    # ヘッダーメッセージ
-    headers = {
-        "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={
-        "channel": SLACK_CHANNEL,
-        "text": f"*✍️ 投稿案（{now_str}）* {len(posts)}件 ↓"
-    })
+    message = f"*✍️ 投稿案（{now_str}）*\n蓄積データ {len(tweets)}件より生成\n\n{suggestions}"
 
-    for post in posts:
-        send_post_to_slack(post)
-
-    print("✅ Slack送信完了")
+    send_to_slack(message)
+    print("✅ Slack通知送信完了")
 
 if __name__ == "__main__":
     main()
