@@ -76,7 +76,14 @@ def generate_posts(tweets: list) -> list:
     # JSON部分を抽出
     start = result.find("{")
     end = result.rfind("}") + 1
-    return json.loads(result[start:end])["posts"]
+    try:
+        start = result.find("{")
+        end = result.rfind("}") + 1
+        return json.loads(result[start:end])["posts"]
+    except Exception as e:
+        print(f"JSON解析失敗: {e}")
+        print(f"Claude応答: {result[:200]}")
+        return [{"keyword": "全体", "type": "テキスト", "text": result}]
 
 # ── Slackにボタン付きメッセージ送信 ──────────────────────
 def send_post_to_slack(post: dict):
