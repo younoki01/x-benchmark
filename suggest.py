@@ -55,35 +55,58 @@ def generate_posts(tweets: list) -> list:
 
 {examples}
 
-上記を参考に、キーワードごとに投稿案を作成してください。
+【重要】投稿案は以下の口調・スタイルで書いてください：
+- ですます調ではなくだ・である調（「〜と思う」「〜かな」「〜が重要」）
+- カジュアルだが専門的
+- 自分の経験や意見を率直に述べる一人称スタイル
+- 体言止めや断定系を使う
+- 適度に改行を入れて読みやすくする
+
+キーワードごとに投稿案を作成してください。
 キーワード：{keywords_str}
 
-条件：
-- キャリアコンサルタント・エンジニアの専門知識を活かした内容
-- 各キーワードについて：
-  【短文版】140文字以内 × {POST_COUNT}案
-  【長文版】300〜400文字 × {POST_COUNT}案
+各キーワードについて：
+- 【短文版】140文字以内 × {POST_COUNT}案
+- 【長文版】300〜400文字 × {POST_COUNT}案
 
-必ずJSON形式のみで返答してください。以下の形式で：
-{{
-  "posts": [
-    {{"keyword": "転職", "type": "短文", "text": "投稿内容"}},
-    ...
-  ]
-}}"""
+以下の形式で返答してください（JSONは不要）：
 
-    result = call_claude(prompt)
-    # JSON部分を抽出
-    start = result.find("{")
-    end = result.rfind("}") + 1
-    try:
-        start = result.find("{")
-        end = result.rfind("}") + 1
-        return json.loads(result[start:end])["posts"]
-    except Exception as e:
-        print(f"JSON解析失敗: {e}")
-        print(f"Claude応答: {result[:200]}")
-        return [{"keyword": "全体", "type": "テキスト", "text": result}]
+===転職 短文1===
+投稿内容
+
+===転職 短文2===
+投稿内容
+
+===転職 長文1===
+投稿内容
+
+（以下同様）"""
+
+    result = call_claude(prompt, max_tokens=4000)
+    
+    # ===キーワード type番号=== 形式でパース
+    posts = []
+    sections = result.split("===")
+    for i in range(1, len(sections), 2):
+        if i + 1 < len(sections):
+            header = sections[i].strip()
+            content = sections[i + 1].strip()
+            if not content:
+                continue
+            # "転職 短文1" → keyword="転職", type="短文"
+            parts = header.rsplit(" ", 1)
+            if len(parts) == 2:
+                keyword = parts[0]
+                ptype = "短文" if "短文" in parts[1] else "長文"
+            else:
+                keyword = header
+                ptype = "投稿"
+            posts.append({"keyword": keyword, "type": ptype, "text": content})
+    
+    if not posts:
+        posts = [{"keyword": "全体", "type": "投稿案", "text": result}]
+    
+    return posts
 
 # ── Slackにボタン付きメッセージ送信 ──────────────────────
 def send_post_to_slack(post: dict):
