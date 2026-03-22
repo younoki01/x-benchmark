@@ -4,10 +4,9 @@ import requests
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# ── 環境変数 ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SLACK_BOT_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
-SLACK_CHANNEL     = os.environ["SLACK_CHANNEL"]  # 例: #x-analytics
+SLACK_CHANNEL     = os.environ["SLACK_CHANNEL"]
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = Path("data/tweets.json")
@@ -15,14 +14,12 @@ DATA_FILE = Path("data/tweets.json")
 KEYWORDS = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
 POST_COUNT = 3
 
-# ── データ読み込み ────────────────────────────────────────
 def load_data() -> list:
     if not DATA_FILE.exists():
         return []
     with open(DATA_FILE, encoding="utf-8") as f:
         return json.load(f).get("tweets", [])
 
-# ── Claude API呼び出し ────────────────────────────────────
 def call_claude(prompt: str, max_tokens: int = 4000) -> str:
     headers = {
         "x-api-key": ANTHROPIC_API_KEY,
@@ -38,7 +35,6 @@ def call_claude(prompt: str, max_tokens: int = 4000) -> str:
     r.raise_for_status()
     return r.json()["content"][0]["text"]
 
-# ── 投稿案生成 ────────────────────────────────────────────
 def generate_posts(tweets: list) -> list:
     sorted_tweets = sorted(tweets, key=lambda x: x["metrics"].get("impression_count", 0), reverse=True)
     top_tweets = sorted_tweets[:10]
@@ -91,8 +87,7 @@ def generate_posts(tweets: list) -> list:
 （以下同様）"""
 
     result = call_claude(prompt, max_tokens=4000)
-    
-    # ===キーワード type番号=== 形式でパース
+
     posts = []
     sections = result.split("===")
     for i in range(1, len(sections), 2):
@@ -101,7 +96,6 @@ def generate_posts(tweets: list) -> list:
             content = sections[i + 1].strip()
             if not content:
                 continue
-            # "転職 短文1" → keyword="転職", type="短文"
             parts = header.rsplit(" ", 1)
             if len(parts) == 2:
                 keyword = parts[0]
@@ -110,13 +104,12 @@ def generate_posts(tweets: list) -> list:
                 keyword = header
                 ptype = "投稿"
             posts.append({"keyword": keyword, "type": ptype, "text": content})
-    
+
     if not posts:
         posts = [{"keyword": "全体", "type": "投稿案", "text": result}]
-    
+
     return posts
 
-# ── Slackにボタン付きメッセージ送信 ──────────────────────
 def send_post_to_slack(post: dict):
     headers = {
         "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
@@ -139,14 +132,26 @@ def send_post_to_slack(post: dict):
             "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "✅ 投稿する"},
+                    "text": {"type": "plain_text", "text": "X + Threads"},
                     "style": "primary",
+                    "action_id": "post_to_both",
+                    "value": text
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "X のみ"},
                     "action_id": "post_to_x",
                     "value": text
                 },
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "⏭️ スキップ"},
+                    "text": {"type": "plain_text", "text": "Threads のみ"},
+                    "action_id": "post_to_threads",
+                    "value": text
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "スキップ"},
                     "action_id": "skip_post",
                     "value": text
                 }
@@ -162,7 +167,6 @@ def send_post_to_slack(post: dict):
     }
     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json=payload)
 
-# ── メイン ────────────────────────────────────────────────
 def main():
     print("▶ 投稿案生成 起動")
     tweets = load_data()
@@ -176,7 +180,6 @@ def main():
     print(f"  生成投稿案: {len(posts)}件")
 
     now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
-    # ヘッダーメッセージ
     headers = {
         "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
         "Content-Type": "application/json",
