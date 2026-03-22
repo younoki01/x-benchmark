@@ -10,6 +10,7 @@ SLACK_CHANNEL     = os.environ["SLACK_CHANNEL"]
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = Path("data/tweets.json")
+FEEDBACK_FILE = Path("data/feedback.json")
 
 KEYWORDS = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
 POST_COUNT = 3
@@ -19,6 +20,12 @@ def load_data() -> list:
         return []
     with open(DATA_FILE, encoding="utf-8") as f:
         return json.load(f).get("tweets", [])
+
+def load_feedback() -> dict:
+    if not FEEDBACK_FILE.exists():
+        return {}
+    with open(FEEDBACK_FILE, encoding="utf-8") as f:
+        return json.load(f)
 
 def call_claude(prompt: str, max_tokens: int = 4000) -> str:
     headers = {
@@ -35,7 +42,30 @@ def call_claude(prompt: str, max_tokens: int = 4000) -> str:
     r.raise_for_status()
     return r.json()["content"][0]["text"]
 
-def generate_posts(tweets: list) -> list:
+def build_feedback_prompt(feedback: dict) -> str:
+    sections = []
+
+    # 高パフォーマンス投稿
+    posted = feedback.get("posted", [])
+    high_posts = [p for p in posted if p.get("score") == "high"]
+    if high_posts:
+        examples = "\n".join([
+            f"- {p['text'][:80]}（{p['platform']} いいね:{p['metrics'].get('like_count') or p['metrics'].get('likes',0)}）"
+            for p in high_posts[-5:]
+        ])
+        sections.append(f"【過去の高パフォーマンス投稿（積極的に参考にしてください）】\n{examples}")
+
+    # スキップ理由の集計
+    skipped = [s for s in feedback.get("skipped", []) if s.get("score") == "low"]
+    if skipped:
+        from collections import Counter
+        reasons = Counter(s["reason"] for s in skipped)
+        reason_text = "\n".join([f"- {r}：{c}件" for r, c in reasons.most_common()])
+        sections.append(f"【避けるべきパターン（スキップ理由より）】\n{reason_text}")
+
+    return "\n\n".join(sections)
+
+def generate_posts(tweets: list, feedback: dict) -> list:
     sorted_tweets = sorted(tweets, key=lambda x: x["metrics"].get("impression_count", 0), reverse=True)
     top_tweets = sorted_tweets[:10]
 
@@ -45,6 +75,7 @@ def generate_posts(tweets: list) -> list:
         for t in top_tweets
     ])
 
+    feedback_prompt = build_feedback_prompt(feedback)
     keywords_str = "・".join(KEYWORDS)
 
     prompt = f"""以下はベンチマークアカウントの高パフォーマンス投稿データです。
@@ -56,15 +87,16 @@ def generate_posts(tweets: list) -> list:
 - アプリケーションエンジニア → データベースシステムコンサルタント → Windowsサポートエンジニア（現職）
 - 副業：キャリアアドバイザー、プログラミングスクールメンター、人材紹介業
 - 国家資格キャリアコンサルタント取得済み
-- エンジニアとキャリア支援の両方の専門知識を持つ
 
 【重要】投稿案は以下の口調・スタイルで書いてください：
 - 一人称は「私」を使う
-- ですます調で丁寧に書く（「〜です」「〜ます」「〜と思います」）
+- ですます調で丁寧に書く
 - エンジニアとキャリアコンサルタントの両方の視点を活かす
-- プロフィールは投稿の中に自然に含める場合と含めない場合がある（頻繁に入れない）
+- プロフィールは頻繁に入れない
 - 専門的だが親しみやすいトーン
 - 適度に改行を入れて読みやすくする
+
+{feedback_prompt}
 
 キーワードごとに投稿案を作成してください。
 キーワード：{keywords_str}
@@ -73,7 +105,7 @@ def generate_posts(tweets: list) -> list:
 - 【短文版】140文字以内 × {POST_COUNT}案
 - 【長文版】300〜400文字 × {POST_COUNT}案
 
-以下の形式で返答してください（JSONは不要）：
+以下の形式で返答してください：
 
 ===転職 短文1===
 投稿内容
@@ -149,12 +181,35 @@ def send_post_to_slack(post: dict):
                     "action_id": "post_to_threads",
                     "value": text
                 },
+            ]
+        },
+        {
+            "type": "actions",
+            "elements": [
                 {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "スキップ"},
-                    "action_id": "skip_post",
+                    "text": {"type": "plain_text", "text": "テーマが違う"},
+                    "action_id": "skip_theme",
                     "value": text
-                }
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "文体が合わない"},
+                    "action_id": "skip_style",
+                    "value": text
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "内容が薄い"},
+                    "action_id": "skip_thin",
+                    "value": text
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "タイミングが違う"},
+                    "action_id": "skip_timing",
+                    "value": text
+                },
             ]
         },
         {"type": "divider"}
@@ -170,13 +225,16 @@ def send_post_to_slack(post: dict):
 def main():
     print("▶ 投稿案生成 起動")
     tweets = load_data()
+    feedback = load_feedback()
 
     if not tweets:
         print("データがありません")
         return
 
     print(f"  蓄積データ: {len(tweets)}件")
-    posts = generate_posts(tweets)
+    print(f"  フィードバック: 投稿済み{len(feedback.get('posted',[]))}件 スキップ{len(feedback.get('skipped',[]))}件")
+
+    posts = generate_posts(tweets, feedback)
     print(f"  生成投稿案: {len(posts)}件")
 
     now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
