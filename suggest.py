@@ -9,10 +9,10 @@ SLACK_BOT_TOKEN   = os.environ["SLACK_BOT_TOKEN"]
 SLACK_CHANNEL     = os.environ["SLACK_CHANNEL"]
 
 JST = timezone(timedelta(hours=9))
-DATA_FILE = Path("data/tweets.json")
+DATA_FILE     = Path("data/tweets.json")
 FEEDBACK_FILE = Path("data/feedback.json")
 
-KEYWORDS = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
+KEYWORDS   = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
 POST_COUNT = 3
 
 def load_data() -> list:
@@ -44,8 +44,6 @@ def call_claude(prompt: str, max_tokens: int = 4000) -> str:
 
 def build_feedback_prompt(feedback: dict) -> str:
     sections = []
-
-    # 高パフォーマンス投稿
     posted = feedback.get("posted", [])
     high_posts = [p for p in posted if p.get("score") == "high"]
     if high_posts:
@@ -55,7 +53,6 @@ def build_feedback_prompt(feedback: dict) -> str:
         ])
         sections.append(f"【過去の高パフォーマンス投稿（積極的に参考にしてください）】\n{examples}")
 
-    # スキップ理由の集計
     skipped = [s for s in feedback.get("skipped", []) if s.get("score") == "low"]
     if skipped:
         from collections import Counter
@@ -95,6 +92,7 @@ def generate_posts(tweets: list, feedback: dict) -> list:
 - プロフィールは頻繁に入れない
 - 専門的だが親しみやすいトーン
 - 適度に改行を入れて読みやすくする
+- 短文版は140文字以内、長文版はThreads対応で480文字以内
 
 {feedback_prompt}
 
@@ -103,7 +101,7 @@ def generate_posts(tweets: list, feedback: dict) -> list:
 
 各キーワードについて：
 - 【短文版】140文字以内 × {POST_COUNT}案
-- 【長文版】300〜400文字 × {POST_COUNT}案
+- 【長文版】480文字以内 × {POST_COUNT}案
 
 以下の形式で返答してください：
 
@@ -124,17 +122,17 @@ def generate_posts(tweets: list, feedback: dict) -> list:
     sections = result.split("===")
     for i in range(1, len(sections), 2):
         if i + 1 < len(sections):
-            header = sections[i].strip()
+            header  = sections[i].strip()
             content = sections[i + 1].strip()
             if not content:
                 continue
             parts = header.rsplit(" ", 1)
             if len(parts) == 2:
                 keyword = parts[0]
-                ptype = "短文" if "短文" in parts[1] else "長文"
+                ptype   = "短文" if "短文" in parts[1] else "長文"
             else:
                 keyword = header
-                ptype = "投稿"
+                ptype   = "投稿"
             posts.append({"keyword": keyword, "type": ptype, "text": content})
 
     if not posts:
@@ -143,73 +141,42 @@ def generate_posts(tweets: list, feedback: dict) -> list:
     return posts
 
 def send_post_to_slack(post: dict):
-    headers = {
-        "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
     keyword = post["keyword"]
-    ptype = post["type"]
-    text = post["text"]
+    ptype   = post["type"]
+    text    = post["text"]
 
     blocks = [
         {
             "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"*【{keyword}】{ptype}*\n{text}"
-            }
+            "text": {"type": "mrkdwn", "text": f"*【{keyword}】{ptype}*\n{text}"}
         },
         {
             "type": "actions",
             "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "X + Threads"},
-                    "style": "primary",
-                    "action_id": "post_to_both",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "X のみ"},
-                    "action_id": "post_to_x",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Threads のみ"},
-                    "action_id": "post_to_threads",
-                    "value": text
-                },
+                {"type": "button", "text": {"type": "plain_text", "text": "X + Threads"},
+                 "style": "primary", "action_id": "post_to_both", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "X のみ"},
+                 "action_id": "post_to_x", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "Threads のみ"},
+                 "action_id": "post_to_threads", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "編集して投稿"},
+                 "action_id": "edit_and_post", "value": text},
             ]
         },
         {
             "type": "actions",
             "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "テーマが違う"},
-                    "action_id": "skip_theme",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "文体が合わない"},
-                    "action_id": "skip_style",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "内容が薄い"},
-                    "action_id": "skip_thin",
-                    "value": text
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "タイミングが違う"},
-                    "action_id": "skip_timing",
-                    "value": text
-                },
+                {"type": "button", "text": {"type": "plain_text", "text": "テーマが違う"},
+                 "action_id": "skip_theme", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "文体が合わない"},
+                 "action_id": "skip_style", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "内容が薄い"},
+                 "action_id": "skip_thin", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "事実が違う"},
+                 "action_id": "skip_fact", "value": text},
+                {"type": "button", "text": {"type": "plain_text", "text": "タイミングが違う"},
+                 "action_id": "skip_timing", "value": text},
             ]
         },
         {"type": "divider"}
@@ -224,7 +191,7 @@ def send_post_to_slack(post: dict):
 
 def main():
     print("▶ 投稿案生成 起動")
-    tweets = load_data()
+    tweets   = load_data()
     feedback = load_feedback()
 
     if not tweets:
@@ -238,10 +205,7 @@ def main():
     print(f"  生成投稿案: {len(posts)}件")
 
     now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
-    headers = {
-        "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
     requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={
         "channel": SLACK_CHANNEL,
         "text": f"*✍️ 投稿案（{now_str}）* {len(posts)}件 ↓"
