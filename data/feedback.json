@@ -104,6 +104,38 @@
       },
       "score": "high",
       "collected_at": "2026-03-27T02:04:37.169697+09:00"
+    },
+    {
+      "text": "「転職したいけど、今辞めたら迷惑をかける」と相談される方が多いです。\n\nでも会社は、あなたが辞めても回る仕組みを作るのが本来の姿です。\n\n一人辞めただけで困る組織なら、それは会社側の問題。あなたの人生を犠牲にする理由にはなりません。",
+      "platform": "x",
+      "post_id": "2037290374956499119",
+      "posted_at": "2026-03-27T07:07:31.249738+09:00",
+      "metrics": {
+        "retweet_count": 0,
+        "reply_count": 2,
+        "like_count": 10,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "impression_count": 149
+      },
+      "score": "high",
+      "collected_at": "2026-03-28T01:57:47.530040+09:00"
+    },
+    {
+      "text": "「未経験からエンジニアになりたい」という相談を受けることがあります。\n\nプログラミングスクールに通うのも良いですが、まずは実際にコードを書いてみることをおすすめします。\n\n向き不向きは実際にやってみないとわかりません。",
+      "platform": "x",
+      "post_id": "2037387509366440380",
+      "posted_at": "2026-03-27T13:33:29.885941+09:00",
+      "metrics": {
+        "retweet_count": 0,
+        "reply_count": 0,
+        "like_count": 3,
+        "quote_count": 0,
+        "bookmark_count": 0,
+        "impression_count": 86
+      },
+      "score": "high",
+      "collected_at": "2026-03-28T01:57:47.673957+09:00"
     }
   ],
   "skipped": [
