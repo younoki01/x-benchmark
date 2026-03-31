@@ -12,7 +12,9 @@ JST = timezone(timedelta(hours=9))
 DATA_FILE     = Path("data/tweets.json")
 FEEDBACK_FILE = Path("data/feedback.json")
 
-KEYWORDS   = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
+# ── キーワード設定 ────────────────────────────────────────
+KEYWORDS        = ["転職", "キャリア相談", "面接対策", "エンジニア転職"]
+EXPERT_KEYWORDS = ["キャリア設計", "自己分析", "就活テクニック"]
 POST_COUNT = 3
 
 def load_data() -> list:
@@ -62,7 +64,7 @@ def build_feedback_prompt(feedback: dict) -> str:
 
     return "\n\n".join(sections)
 
-def generate_posts(tweets: list, feedback: dict) -> list:
+def generate_general_posts(tweets: list, feedback: dict) -> list:
     sorted_tweets = sorted(tweets, key=lambda x: x["metrics"].get("impression_count", 0), reverse=True)
     top_tweets = sorted_tweets[:10]
 
@@ -92,7 +94,7 @@ def generate_posts(tweets: list, feedback: dict) -> list:
 - プロフィールは頻繁に入れない
 - 専門的だが親しみやすいトーン
 - 適度に改行を入れて読みやすくする
-- 短文版は140文字以内、長文版はThreads対応で480文字以内
+- 短文版は140文字以内、長文版は480文字以内
 
 {feedback_prompt}
 
@@ -116,8 +118,54 @@ def generate_posts(tweets: list, feedback: dict) -> list:
 
 （以下同様）"""
 
-    result = call_claude(prompt, max_tokens=4000)
+    return _parse_posts(call_claude(prompt, max_tokens=4000))
 
+def generate_expert_posts(feedback: dict) -> list:
+    feedback_prompt = build_feedback_prompt(feedback)
+    keywords_str = "・".join(EXPERT_KEYWORDS)
+
+    prompt = f"""あなたは国家資格キャリアコンサルタントとして、専門的な知識に基づいた投稿案を作成してください。
+
+【投稿者プロフィール】
+- 国家資格キャリアコンサルタント取得済み
+- アプリケーションエンジニア → データベースシステムコンサルタント → Windowsサポートエンジニア（現職）
+- キャリアアドバイザー・人材紹介業の副業経験あり
+- 1989年福岡県生まれ、東京から福岡に移住中
+
+【重要】以下の専門家らしい口調・スタイルで書いてください：
+- 一人称は「私」を使う
+- ですます調で丁寧に、かつ専門家として自信を持った表現
+- キャリアコンサルタントの理論・フレームワーク（自己概念、キャリアアンカー、SWOT等）を自然に盛り込む
+- 具体的な数字・事例・体験談を入れてリアリティを出す
+- 読者が「なるほど」と思えるインサイトを提供する
+- 適度に改行を入れて読みやすくする
+- 短文版は140文字以内、長文版は480文字以内
+
+{feedback_prompt}
+
+キーワードごとに投稿案を作成してください。
+キーワード：{keywords_str}
+
+各キーワードについて：
+- 【短文版】140文字以内 × {POST_COUNT}案（専門知識をコンパクトに凝縮）
+- 【長文版】480文字以内 × {POST_COUNT}案（理論・事例・アドバイスを盛り込んだ専門的な内容）
+
+以下の形式で返答してください：
+
+===キャリア設計 短文1===
+投稿内容
+
+===キャリア設計 短文2===
+投稿内容
+
+===キャリア設計 長文1===
+投稿内容
+
+（以下同様）"""
+
+    return _parse_posts(call_claude(prompt, max_tokens=4000))
+
+def _parse_posts(result: str) -> list:
     posts = []
     sections = result.split("===")
     for i in range(1, len(sections), 2):
@@ -139,6 +187,14 @@ def generate_posts(tweets: list, feedback: dict) -> list:
         posts = [{"keyword": "全体", "type": "投稿案", "text": result}]
 
     return posts
+
+def send_section_header(title: str, count: int):
+    headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
+    now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
+    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={
+        "channel": SLACK_CHANNEL,
+        "text": f"*{title}（{now_str}）* {count}件 ↓"
+    })
 
 def send_post_to_slack(post: dict):
     headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
@@ -201,17 +257,22 @@ def main():
     print(f"  蓄積データ: {len(tweets)}件")
     print(f"  フィードバック: 投稿済み{len(feedback.get('posted',[]))}件 スキップ{len(feedback.get('skipped',[]))}件")
 
-    posts = generate_posts(tweets, feedback)
-    print(f"  生成投稿案: {len(posts)}件")
+    # 一般投稿案
+    general_posts = generate_general_posts(tweets, feedback)
+    print(f"  一般投稿案: {len(general_posts)}件")
 
-    now_str = datetime.now(JST).strftime("%Y/%m/%d %H:%M")
-    headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
-    requests.post("https://slack.com/api/chat.postMessage", headers=headers, json={
-        "channel": SLACK_CHANNEL,
-        "text": f"*✍️ 投稿案（{now_str}）* {len(posts)}件 ↓"
-    })
+    # 専門家投稿案
+    expert_posts = generate_expert_posts(feedback)
+    print(f"  専門家投稿案: {len(expert_posts)}件")
 
-    for post in posts:
+    # Slack送信：一般セクション
+    send_section_header("✍️ 一般投稿案", len(general_posts))
+    for post in general_posts:
+        send_post_to_slack(post)
+
+    # Slack送信：専門家セクション
+    send_section_header("🎓 専門家投稿案", len(expert_posts))
+    for post in expert_posts:
         send_post_to_slack(post)
 
     print("✅ Slack送信完了")
