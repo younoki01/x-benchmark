@@ -88,7 +88,7 @@ def get_news_context() -> str:
         result = call_claude(prompt, max_tokens=1000, use_web_search=True)
         print(f"  時事ネタ取得完了: {len(result)}文字")
         import time
-        time.sleep(15)
+        time.sleep(60)
         return result
     except Exception as e:
         print(f"  時事ネタ取得失敗: {e}")
