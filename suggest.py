@@ -76,22 +76,15 @@ def call_claude(prompt: str, max_tokens: int = 4000, use_web_search: bool = Fals
     return "\n".join(text_parts)
 
 def get_news_context() -> str:
-    """Web検索で転職・キャリア関連の時事ネタを取得"""
+    """転職・キャリア関連のトレンド情報を取得"""
     try:
         today = datetime.now(JST).strftime("%Y年%m月%d日")
-        prompt = f"""今日は{today}です。以下のトピックに関する最新ニュースや動向を3〜5件、簡潔にまとめてください：
-- 転職市場・求人動向
-- キャリア・働き方に関するトレンド
-- エンジニア・IT業界の採用動向
-
-各ニュースは2〜3文で要約してください。"""
-        result = call_claude(prompt, max_tokens=1000, use_web_search=True)
-        print(f"  時事ネタ取得完了: {len(result)}文字")
-        import time
-        time.sleep(60)
+        prompt = f"""今日は{today}です。転職・キャリア・IT業界に関する最近のトレンドや話題を3〜5件、簡潔にまとめてください。各項目は2〜3文で。"""
+        result = call_claude(prompt, max_tokens=500, use_web_search=False)
+        print(f"  トレンド取得完了: {len(result)}文字")
         return result
     except Exception as e:
-        print(f"  時事ネタ取得失敗: {e}")
+        print(f"  トレンド取得失敗: {e}")
         return ""
 
 def build_feedback_prompt(feedback: dict) -> str:
@@ -331,6 +324,10 @@ def main():
     # 一般投稿案生成
     general_posts = generate_general_posts(tweets, feedback, log, news, theme)
     print(f"  一般投稿案: {len(general_posts)}件")
+
+    import time
+    print("  レート制限回避のため待機中...")
+    time.sleep(30)
 
     # 専門家投稿案生成
     expert_posts = generate_expert_posts(feedback, log, news, theme)
