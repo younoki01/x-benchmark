@@ -2,7 +2,7 @@ name: Collect Feedback
 
 on:
   schedule:
-    - cron: '0 16 * * *'  # 毎日UTC 16:00 = JST 1:00
+    - cron: '20 15 * * *'  # 毎日UTC 15:20 = JST 0:20
   workflow_dispatch:
 
 jobs:
